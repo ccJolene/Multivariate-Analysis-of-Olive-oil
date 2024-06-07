@@ -1,0 +1,469 @@
+---
+title: "Multivariate Analysis of Oliveoil"
+author: "Jolene Chen"
+date: "2024/04/24"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    df_print: paged
+---
+
+\newpage
+
+# Introduction
+
+The dataset *oliveoil* contains 572 rows, each corresponding to a different specimen of olive oil, and 10 columns. The first and the second column correspond to the macro-area (`Centre-North`, `South`, `Sardinia`) and the region of origin of the olive oils, respectively. Columns 3-10 represent the following 8 chemical measurements on the acid components for the oil specimens: `palmitic`, `palmitoleic`, `stearic`, `oleic`, `linoleic`, `linolenic`, `arachidic`, `eicosenoic`. The data set *oliveoil* can be downloaded from:
+
+[https://ghuang.stat.nycu.edu.tw/course/multivariate24/files/exam/oliveoil.csv](https://ghuang.stat.nycu.edu.tw/course/multivariate24/files/exam/oliveoil.csv)
+
+The data set can also be downloaded from [e3](https://e3.nycu.edu.tw/) under "midterm".
+
+\
+
+# Import
+```{r}
+oil <- read.csv('oliveoil.csv', header = TRUE)
+dim(oil)
+head(oil)
+```
+
+```{r}
+oil[c(5,50,100,150,200,250,300,350,400,450,500,550),]
+summary(oil)
+table(oil[, 'macro.area'])
+```
+
+> **Following, I will perform various multivariate analyses on this data set using the R software.**
+
+\
+\
+
+# 1. ANOVA
+
+To examine the differences of the 8 acid chemical measurements on the acid components for the oil specimens across three macro-areas, one can do the multivariate mean inferences.
+
+## a. MANOVA
+
+##### Use the one-way MANOVA to examine the overall acid chemical measurement differences among different macro-areas. 
+
+
+The model is
+$$\boldsymbol{X}_{\ell j}=\boldsymbol{\mu}+\boldsymbol{\tau}_{\ell}+\boldsymbol{e}_{\ell j}, \ \ell=1,2,3 \ (\mbox{macro-area: Centre-North, South, Sardinia}), \ j=1,\cdots,n_{\ell} $$
+
+$$H_0: \mu_{Centre.North} = \mu_{Sardinia} = \mu_{South}$ v.s. $H_1: Not~H_0$$
+
+```{r}
+fit <- manova(as.matrix(oil[, 3:10]) ~ as.factor(oil[, 1]), data = oil)
+fit
+```
+
+```{r}
+res <- summary(fit); res
+```
+
+```{r}
+res$SS
+```
+
+For the MANOVA table for comparing population mean vectors, the treatment sum of squares and cross products $\boldsymbol{B}$ is `res$SS$as.factor(macro.area)` with df = 2, the residual sum of squares and cross products $\boldsymbol{W}$ is `res$SS$Residuals` with df = 569, and the total sum of squares and cross products is $\boldsymbol{B}+\boldsymbol{W}$ with df = 571. 
+
+- p-value < 2.2e-16, Reject $H_0$ at \alpha = 0.05 level.
+
+  At a significance level of 0.05, there is 95% confidence that the overall acid chemical measurement differences among different macro-areas are significant.
+
+\
+
+## b. One-way ANOVA
+
+##### One-way ANOVA on each each acid measurement (8 variables in total) for its differences over macro-areas
+
+Since we need to perform the test for multiple measurements simultaneously in the ANOVA analysis, then according to Bonferroni, we set the cut-off for the p-value < $\frac{0.05}{\text{number of variables}}$ to be significant.
+
+```{r}
+alpha <- (0.05/8)
+cat('Cutoff for the p-value:', alpha)
+```
+
+Which acid measurement(s) are significantly different over macro-areas?
+
+```{r}
+p <- rep(0, 8)
+sig <- rep(T, 8)
+
+for (i in 1:8){
+  cat('#####################   ANOVA for', colnames(oil)[i+2], '   #####################\n')
+  results <- summary(aov(oil[, i+2] ~ as.factor(oil[, 1])), data = oil)
+  print(results)
+  cat('\n')
+  
+  p[i] <- results[[1]][["Pr(>F)"]][1]
+  sig[i] <- p[i] < alpha
+}
+```
+
+```{r, echo=FALSE}
+cat("There are", length(sig[sig==T]), "of acid measurement with significant differences.","\n")
+cat('The acid measurement significantly different over macro-areas: ')
+
+for (i in which(sig == TRUE)+2){
+  cat('\t\n -', colnames(oil)[i])
+}
+```
+
+- Based on above results, only stearic is not significantly different over macro-areas.
+
+  At a significance level of 0.00625, there is confidence that the other 7 acid chemicals show significant differences among the different macro-areas.
+
+\
+
+> **Following, we will perform the principal component analysis (PCA), the orthogonal factor analysis (FA) with a proper factor rotation, and the multidimensional scaling (MDS). **
+
+\
+\
+
+# 2. Principal component analysis
+
+## a. PCA
+
+##### a.1 PCA (original variables)
+```{r, echo = F}
+cov_oil <- cov(oil[3:10])
+ev_s <- eigen(cov_oil)
+eigenvector_s <- ev_s$vectors
+eigenvalues_s <- ev_s$values
+
+cat('Eigenvalues: \n')
+```
+$$\left\{
+\begin{aligned}
+& \widehat{\lambda_1} = 230543.82788 \\
+& \widehat{\lambda_2} = 22789.01058  \\
+& \widehat{\lambda_3}=2064.26492 \\
+& \widehat{\lambda_4}=758.82269 \\
+& \widehat{\lambda_5}=615.20792 \\
+& \widehat{\lambda_6}=143.52118 \\
+& \widehat{\lambda_7}=51.05564 \\
+& \widehat{\lambda_8}=48.74556
+\end{aligned}
+\right.$$
+
+```{r}
+cat('Eigenvectors: \n'); eigenvector_s
+```
+
+```{r}
+pca = prcomp(oil[, 3:10], center = T)
+pca.data = data.frame(pca$x)
+pca.variance = pca$sdev^2 / sum(pca$sdev^2)
+
+summary(pca)
+print(pca$rotation)
+```
+
+```{r}
+library(ggplot2)
+screeplot(pca, type = 'lines', main = 'Scree Plot of PCA')
+
+ggplot(pca.data, aes(x = PC1, y = PC2, color = oil[, 1])) +
+    geom_point(size = 3) +
+    geom_hline(yintercept = 0) + 
+    geom_vline(xintercept = 0) +
+    stat_ellipse(aes(x = PC1, y = PC2), linetype = 2, linewidth = 0.5, level = 0.95) + 
+    guides(colour = guide_legend("Macro.area")) +
+    ggtitle('PCA (original variables)') +
+    theme_bw()
+```
+- According to the results of the Importance of Components and the Scree Plot, the first principal component can explain 89.7% of the total variance.
+
+- $\hat{\lambda_1}$ = 230543.82788
+  
+  The first sample principal component is:
+  
+  $$\hat{y_1} = 0.2842 \times \text{palmitic} +  \cdots + 0.0111 \times \text{eicosenoic}$$
+- `oleic` plays the main role in the first principal. 
+
+\
+
+##### a.2 PCA using the correlation matrix (standardized variables)
+
+```{r, echo=F}
+cor_oil <- cor(oil[3:10])
+ev_r <- eigen(cor_oil)
+eigenvector_r <- ev_r$vectors
+eigenvalues_r <- ev_r$values
+
+cat('Eigenvalues: \n')
+```
+
+$$\left\{
+\begin{aligned}
+& \widehat{\lambda_1} = 3.7214 \\
+& \widehat{\lambda_2} = 1.7658  \\
+& \widehat{\lambda_3}=1.0163 \\
+& \widehat{\lambda_4}=0.7929 \\
+& \widehat{\lambda_5}=0.3338 \\
+& \widehat{\lambda_6}=0.2488 \\
+& \widehat{\lambda_7}=0.1188 \\
+& \widehat{\lambda_8}=0.0021
+\end{aligned}
+\right.$$
+
+```{r}
+cat('Eigenvectors: \n'); eigenvector_r
+```
+
+```{r}
+pca_std = prcomp(oil[, 3:10], center = T, scale = TRUE)
+pca_std.data = data.frame(pca_std$x)
+pca_std.variance = pca_std$sdev^2 / sum(pca_std$sdev^2)
+
+summary(pca_std)
+print(pca_std$rotation)
+```
+
+```{r}
+screeplot(pca_std, type = 'lines', main = 'Scree Plot of Standardized PCA')
+
+ggplot(pca_std.data, aes(x = PC1, y = PC2, color = oil[, 1])) +
+    geom_point(size = 3) +
+    geom_hline(yintercept = 0) + 
+    geom_vline(xintercept = 0) +
+    stat_ellipse(aes(x = PC1, y = PC2), linetype = 2, linewidth = 0.5, level = 0.95) + 
+    guides(colour = guide_legend("Macro.area")) +
+    ggtitle('PCA using the correlation matrix (standardized variables)') +
+    theme_bw()
+```
+
+- According to the results of the Importance of Components and the Scree Plot, the fourth principal component can explain 91.2% of the total variance.
+
+- $\hat{\lambda_1}$ = 3.7214, $\hat{\lambda_2}$ = 1.7658, $\hat{\lambda_3}$ = 1.0164, $\hat{\lambda_4}$ = 0.7929
+  
+  The first sample principal component is:
+  
+  $$\hat{y_1} = 0.4607 \times \text{palmitic} +  \cdots + 0.3119 \times \text{eicosenoic}$$
+- `oleic` plays the main role in the first principal, `linolenic` plays the main role in the second principal, `stearic` plays the main role in the third principal and `linoleic` plays the main role in the fourth principal.
+
+
+#### Conclusion
+
+- In this case, PCA using the covariance matrix requires only one component can explain almost 89.7% of the variance, with two component can explain 98.57% of the variance. Whereas PCA using the correlation matrix needs four components to explain 91.26% of the variance. Furthermore, with only two and three components, PCA using the correlation matrix can explain only 68.59% and 81.29% of the variance. Therefore, for this dataset, PCA using the covariance matrix seems more suitable.
+
+\
+
+## b. Factor Analysis
+```{r}
+library(ggcorrplot)
+ggcorrplot(cor_oil)
+```
+
+##### Principal component solution of the factor model: 
+
+**Factor loadings is given by**
+$$
+\tilde{\mathbf{L}} = [\sqrt{\hat{\lambda}_1}\hat{\mathbf{e}_1 }  | \sqrt{\hat{\lambda}_2}\hat{\mathbf{e}_2 }|\cdots|\sqrt{\hat{\lambda}_m}\hat{\mathbf{e}_m }]
+$$
+
+
+**Uniqueness form:**
+$$
+\mathbf{\tilde{\Psi}}=
+\begin{bmatrix}
+\tilde{\psi}_1 & 0 & \cdots & 0
+\\0 & \tilde{\psi}_2 & \cdots & 0
+\\\vdots & \vdots & \ddots & 0
+\\0 & 0 & \cdots & \tilde{\psi}_p
+\end{bmatrix}
+\text{with } \tilde{\psi}_i=s_{ii} - \sum_{j=1}^{m} {\tilde{\ell}^2_{ij}}
+$$
+
+\
+
+##### b.1 Proportion Variance for m = 1
+
+```{r}
+library(psych)
+
+factfit1 <- principal(oil[3:10], nfactors=1, rotate="none",  cor = 'cov'); factfit1
+load_fa1 <- print(factfit1$loadings, digits = 7, cutoff = 1e-7)
+diag_fa1 <- diag(factfit1$uniquenesses); diag_fa1
+sum(diag(t(load_fa1) %*% load_fa1)) / tr(cov_oil)
+```
+
+\
+
+##### b.2 Proportion Variance for m = 2
+
+```{r}
+factfit2 <- principal(oil[3:10], nfactors=2, rotate="none",  cor = 'cov'); factfit2
+load_fa2 <- print(factfit2$loadings, digits = 7, cutoff = 1e-7)
+diag_fa2 <- diag(factfit2$uniquenesses); diag_fa2
+sum(diag(t(load_fa2) %*% load_fa2)) / tr(cov_oil)
+```
+
+```{r}
+factfit2_df <- data.frame(factfit2$scores[, 1], factfit2$scores[, 2], macro.area = oil$macro.area)
+ggplot(factfit2_df, aes(factfit2_df[, 1], factfit2_df[, 2], color = factor(macro.area))) + 
+    geom_point() + 
+    labs(title = "Factor Analysis: 1st and 2nd Factor Scores",
+         x = "Factor 1", y = "Factor 2", color = "Macro.area")
+```
+
+- In the factor model with m=1, 89.70% of the total sample variance has been explained by the first factor, moreover, it is clear that oleic plays the main role in the factor.
+
+- In the factor model with m=2, linoleic has the largest loading regarding to the second factor while oleic remains significant in the first factor. In the factor model with m=2, the cumulative proportion of total sample variance explained reaches 98.57%.
+
+- Therefore, 2 factors provide a good fit to the data using a PC solution.
+
+\
+
+## c. MDS
+```{r}
+library(MASS)
+dist_oil <- dist(oil[, 3:10], method = 'euclidean')
+mds_oil = isoMDS(dist_oil, k = 3)
+
+head(mds_oil$points)
+mds_oil$stress
+```
+
+```{r}
+# plot(mds_oil[[1]][,1], mds_oil[[1]][,2])
+mds_oil_point <- as.data.frame(mds_oil[[1]])
+
+colnames(mds_oil_point) <- c('mds1', 'mds2', 'mds3')
+ggplot(mds_oil_point, aes(x = mds1, y = mds2, color = oil[, 1])) +
+    geom_point(size = 3) +
+    geom_hline(yintercept = 0) + 
+    geom_vline(xintercept = 0) +
+    stat_ellipse(aes(x = mds1, y = mds2), linetype = 2, linewidth = 0.5, level = 0.95) + 
+    guides(colour = guide_legend("Macro.area"))+
+    ggtitle('MDS')+
+    theme_bw()
+```
+
+\
+\
+
+# 3. Agglomerative hierarchical clustering
+
+Do the agglomerative hierarchical clustering with (1) average linkage, (2) the k-means clustering, and (3) the model-based clustering that adopts the Gaussian mixture model with covariance matrices $\boldsymbol{\Sigma}_{1}=\cdots=\boldsymbol{\Sigma}_{3}=\boldsymbol{\Sigma}$. Which approach has the best performance in clustering specimens from the same macro-area together?
+
+
+## a. Average Linkage
+```{r}
+library(dplyr)
+
+# agglomerative hierarchical with average linkage
+oil_avg <- hclust(dist_oil, method = 'average')
+
+oil_avg_cu <- cutree(oil_avg, k = 3)
+# table(oil_avg_cu, oil[, 1])
+
+oil_avg_cu_r <- case_when(oil_avg_cu==1 ~ 1,
+                          oil_avg_cu==2 ~ 3,
+                          oil_avg_cu==3 ~ 2)
+
+table1 <- table(oil_avg_cu_r, oil[, 1]); table1
+cat("\nAccuracy =", sum(diag(table1))/sum(table1), "\n")
+```
+
+\
+
+## b. K-means
+
+```{r}
+set.seed(42)
+oil_km <- kmeans(oil[, 3:10], 3)
+# table(oil_km$cluster, oil[, 1])
+
+oil_km_r <- case_when(oil_km$cluster == 1 ~ 1,
+                      oil_km$cluster == 2 ~ 3,
+                      oil_km$cluster == 3 ~ 2
+)
+
+table2 <- table(oil_km_r, oil[, 1]); table2
+cat("\nAccuracy =", sum(diag(table2))/sum(table2), "\n")
+```
+
+```{r}
+library(factoextra)
+fviz_cluster(oil_km,           
+             data = dist_oil,              
+             geom = c("point","text"), 
+             frame.type = "norm")
+```
+
+\
+
+## c. Model-based clustering
+```{r}
+library(mclust)
+mbcl <- Mclust(oil[, 3:10], modelNames="EEE", G=3)
+summary(mbcl)
+table(mbcl$classification, oil[, 1])
+
+mbcl5r <- case_when(mbcl$classification==1 ~ 1,
+                    mbcl$classification==2 ~ 3,
+                    mbcl$classification==3 ~ 2)
+table3 <- table(mbcl5r, oil[, 1]); table3
+cat("\nAccuracy =", sum(diag(table3))/sum(table3), "\n")
+```
+
+- By the accuracy rate, model-based clustering has the best performance in clustering specimens from the same macro-area together.
+
+
+```{r}
+cat("The total sum of squares is:", oil_km$totss)
+cat("The (total) within-cluster sum of squares is:", oil_km$tot.withinss)
+cat("The between-cluster sum of squares is:", oil_km$betweenss)
+```
+
+##### Gaussian mixture model used for model based clustering
+
+In model-based clustering with $\boldsymbol{\Sigma_1=\Sigma_2=\Sigma_3=\Sigma}$, the mixture model is
+$$ f_{Mix}(\boldsymbol{x|\mu_1,\mu_2,\mu_3,\Sigma},p_1,p_2,p_3)=
+\displaystyle \sum_{i=1}^3 p_i \frac{1}{(2\pi)^{p/2}|\Sigma|^{1/2}}
+\exp\left(-\frac{1}{2}\boldsymbol{(x-\mu_i)^{'}\Sigma^{-1}(x-\mu_i)}\right) $$
+where $p=8$ in this case.
+
+Here's the estimated probabilities belonging to each cluster, cluster means and the common covariance matrix.
+
+##### Probabilities
+```{r}
+mbcl$parameters$pro
+```
+
+##### Cluster means
+```{r}
+mbcl$parameters$mean
+```
+
+##### Common covaraince matrix
+```{r}
+mbcl$parameters$variance$Sigma
+```
+
+\
+
+## d. Silhouette plot 
+
+for each of the clustering approaches. 
+
+```{r}
+library(cluster)
+
+sia <- silhouette(oil_avg_cu, dist_oil)
+plot(sia, col=1:3, border=NA)
+
+sik <- silhouette(oil_km$cluster, dist_oil)
+plot(sik, col = 1:3, border = NA)
+
+sim<-silhouette(mbcl$classification, dist_oil)
+plot(sim, col=1:3, border=NA)
+```
+
+- By the average ailhoutte width, average linkage has the best cluster fit based on the average silhouette width
